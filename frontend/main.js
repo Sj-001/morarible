@@ -1,37 +1,41 @@
 /* Moralis init code */
-const appId = "TurNDTB5qcPTaIYDKBNRC6urs39VVV1nRqg9a70k";
+const appId = "VqZNaiJqaOVyDxab6gzVeOfWWGL6xovtMboEjHgt";
 
-Moralis.initialize(appId);
-const serverUrl = "https://giihjszntxbf.usemoralis.com:2053/server";
-// Moralis.start({ serverUrl, appId });
-Moralis.serverURL = serverUrl;
+// Moralis.initialize(appId);
+const serverUrl = "https://dlbuajaiytpi.usemoralis.com:2053/server";
+Moralis.start({ serverUrl, appId });
+// Moralis.serverURL = serverUrl;
 
-const TOKEN_CONTRACT_ADDRESS = "0x6ffbc7a751dadb22e60b8332598941155c8205e2";
+const TOKEN_CONTRACT_ADDRESS = "0x7BF2f2503D51308E40fd76b24c8b6c0E2f60f43e";
 
 init = async () => {
-  // window.web3 = await Moralis.enableWeb3();
+  await Moralis.enableWeb3();
+  window.web3 = new Web3(Moralis.provider);
   window.tokenContract = new web3.eth.Contract(
     tokenContractAbi,
     TOKEN_CONTRACT_ADDRESS
   );
+  hideElement(userItemsSection);
+
   hideElement(userInfo);
   hideElement(createItemForm);
   initUser();
+  loadUserItems();
 };
 
 initUser = async () => {
   const user = await Moralis.User.current();
 
-  console.log(user);
-
   if (user) {
     hideElement(userConnectButton);
     showElement(userProfileButton);
     showElement(openCreateItemButton);
+    showElement(openUserItemsButton);
   } else {
     showElement(userConnectButton);
     hideElement(userProfileButton);
     hideElement(openCreateItemButton);
+    hideElement(openUserItemsButton);
   }
 };
 
@@ -99,7 +103,6 @@ createItem = async () => {
     alert("Please give the item a name!");
     return;
   }
-  console.log("Anshika chutiya h");
   const nftFile = new Moralis.File("nftFile.jpg", createItemFile.files[0]);
   await nftFile.saveIPFS();
 
@@ -109,8 +112,7 @@ createItem = async () => {
   const metadata = {
     name: createItemNameField.value,
     description: createItemDescriptionField.value,
-    nftFilePath,
-    nftFileHash,
+    image: nftFilePath,
   };
 
   const nftFileMetadataFile = new Moralis.File("metadata.json", {
@@ -121,6 +123,7 @@ createItem = async () => {
   const nftFileMetadataFilePath = nftFileMetadataFile.ipfs();
   const nftFileMetadataFileHash = nftFileMetadataFile.hash();
 
+  const nftId = await mintNft(nftFileMetadataFilePath);
   const Item = Moralis.Object.extend("Item");
 
   // Create a new instance of that class.
@@ -131,8 +134,39 @@ createItem = async () => {
   item.set("nftFileHash", nftFileHash);
   item.set("metadataFilePath", nftFileMetadataFilePath);
   item.set("metadataFileHash", nftFileMetadataFileHash);
+  item.set("nftId", nftId);
+  item.set("nftContractAddress", TOKEN_CONTRACT_ADDRESS);
   await item.save();
   console.log(item);
+};
+
+mintNft = async (metadataUri) => {
+  const receipt = await tokenContract.methods
+    .createItem(metadataUri)
+    .send({ from: ethereum.selectedAddress });
+
+  console.log(receipt);
+  return receipt.events.Transfer.returnValues.tokenId;
+};
+
+openUserItems = async () => {
+  user = await Moralis.User.current();
+  if (user) {
+    showElement(userItemsSection);
+  } else {
+    login();
+  }
+};
+
+loadUserItems = async () => {
+  const ownedItems = await Moralis.Cloud.run("getUserItems");
+  const user = Moralis.User.current();
+  // console.log(user.attributes.ethAddress);
+  // const ownedItems = await Moralis.Web3API.account.getNFTs({
+  //   chain: "rinkeby",
+  //   address: user.attributes.ethAddress,
+  // });
+  console.log("owned items", ownedItems);
 };
 
 hideElement = (element) => (element.style.display = "none");
@@ -177,5 +211,13 @@ document.getElementById("btnCloseCreateItem").onclick = () =>
   hideElement(createItemForm);
 
 document.getElementById("btnCreateItem").onclick = createItem;
+
+// User Items
+const userItemsSection = document.getElementById("userItems");
+const userItems = document.getElementById("userItemsList");
+document.getElementById("btnCloseUserItems").onclick = () =>
+  hideElement(userItemsSection);
+const openUserItemsButton = document.getElementById("btnMyItems");
+openUserItemsButton.onclick = openUserItems;
 
 init();
