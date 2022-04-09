@@ -6,7 +6,9 @@ const serverUrl = "https://dlbuajaiytpi.usemoralis.com:2053/server";
 Moralis.start({ serverUrl, appId });
 // Moralis.serverURL = serverUrl;
 
-const TOKEN_CONTRACT_ADDRESS = "0x7BF2f2503D51308E40fd76b24c8b6c0E2f60f43e";
+const TOKEN_CONTRACT_ADDRESS = "0x1b3D03941026f7762Aa1D3f05b55963419F4D795";
+const MARKETPLACE_CONTRACT_ADDRESS =
+  "0xEB5554230f5d57608094242adBeD8A72875DDfdc";
 
 init = async () => {
   await Moralis.enableWeb3();
@@ -15,12 +17,15 @@ init = async () => {
     tokenContractAbi,
     TOKEN_CONTRACT_ADDRESS
   );
+  window.marketplaceContract = new web3.eth.Contract(
+    marketplaceContractAbi,
+    MARKETPLACE_CONTRACT_ADDRESS
+  );
   hideElement(userItemsSection);
 
   hideElement(userInfo);
   hideElement(createItemForm);
   initUser();
-  loadUserItems();
 };
 
 initUser = async () => {
@@ -31,6 +36,7 @@ initUser = async () => {
     showElement(userProfileButton);
     showElement(openCreateItemButton);
     showElement(openUserItemsButton);
+    loadUserItems();
   } else {
     showElement(userConnectButton);
     hideElement(userProfileButton);
@@ -138,6 +144,25 @@ createItem = async () => {
   item.set("nftContractAddress", TOKEN_CONTRACT_ADDRESS);
   await item.save();
   console.log(item);
+
+  const user = Moralis.User.current();
+  const userAddress = user.get("ethAddress");
+
+  switch (createItemStatusField.value) {
+    case "0":
+      return;
+    case "1":
+      await ensureMarketplaceIsApproved(nftId, TOKEN_CONTRACT_ADDRESS);
+      await marketplaceContract.methods.addItemToMarket(
+        nftId,
+        TOKEN_CONTRACT_ADDRESS,
+        createItemPriceField.value
+      );
+      break;
+    case "2":
+      alert("Not yet supported!");
+      return;
+  }
 };
 
 mintNft = async (metadataUri) => {
@@ -160,13 +185,55 @@ openUserItems = async () => {
 
 loadUserItems = async () => {
   const ownedItems = await Moralis.Cloud.run("getUserItems");
-  const user = Moralis.User.current();
-  // console.log(user.attributes.ethAddress);
+  // const user = Moralis.User.current();
   // const ownedItems = await Moralis.Web3API.account.getNFTs({
   //   chain: "rinkeby",
   //   address: user.attributes.ethAddress,
   // });
-  console.log("owned items", ownedItems);
+
+  ownedItems.forEach((item) => {
+    getAndRenderItemData(item, renderUserItem);
+  });
+};
+
+initTemplate = (id) => {
+  const template = document.getElementById(id);
+  template.id = "";
+  template.parentNode.removeChild(template);
+  return template;
+};
+
+renderUserItem = (item) => {
+  const userItem = userItemTemplate.cloneNode(true);
+  userItem.getElementsByTagName("img")[0].src = item.image;
+  userItem.getElementsByTagName("img")[0].alt = item.name;
+  userItem.getElementsByTagName("h5")[0].innerText = item.name;
+  userItem.getElementsByTagName("p")[0].innerText = item.description;
+  userItems.appendChild(userItem);
+};
+
+getAndRenderItemData = (item, renderFunction) => {
+  console.log("fetching...");
+  fetch(item.tokenUri)
+    .then((response) => response.json())
+    .then((data) => {
+      data.symbol = item.symbol;
+      data.tokenId = item.tokenId;
+      data.tokenAddress = item.tokenAddress;
+      renderFunction(data);
+    });
+};
+
+ensureMarketplaceIsApproved = async (tokenId, tokenAddress) => {
+  const user = Moralis.User.current();
+  const userAddress = user.get("ethAddress");
+  const contract = new web3.eth.Contract(tokenContractAbi, tokenAddress);
+  const approvedAddress = await contract.methods
+    .getApproved(tokenId)
+    .call({ from: userAddress });
+  if (approvedAddress != MARKETPLACE_CONTRACT_ADDRESS) {
+    await contract.methods.approve(MARKETPLACE_CONTRACT_ADDRESS, toeknId);
+  }
 };
 
 hideElement = (element) => (element.style.display = "none");
@@ -220,4 +287,5 @@ document.getElementById("btnCloseUserItems").onclick = () =>
 const openUserItemsButton = document.getElementById("btnMyItems");
 openUserItemsButton.onclick = openUserItems;
 
+const userItemTemplate = initTemplate("itemTemplate");
 init();
